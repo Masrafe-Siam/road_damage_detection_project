@@ -1,0 +1,140 @@
+import tensorflow as tf
+from tensorflow.keras import layers, models, regularizers
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Parameters
+BATCH_SIZE = 32
+IMAGE_SIZE = 256
+CHANNELS = 3
+EPOCHS = 50
+INPUT_SHAPE = (IMAGE_SIZE, IMAGE_SIZE, CHANNELS)
+CLASS_NAMES = ['Crack', 'Pothole', 'Surface Erosion']
+N_CLASSES = len(CLASS_NAMES)
+
+# Load dataset from directory
+dataset = tf.keras.preprocessing.image_dataset_from_directory(
+    'E:/python/ML/pothole_detection_CNN/Datasetv2',
+    shuffle=True,
+    image_size=(IMAGE_SIZE, IMAGE_SIZE),
+    batch_size=BATCH_SIZE
+)
+
+# Partition the dataset
+def partition_data(ds, train_split=0.8, val_split=0.1, test_split=0.1, shuffle=True, shuffle_size=10000):
+    ds_size = len(ds)
+    if shuffle:
+        ds = ds.shuffle(shuffle_size, seed=42)
+    train_size = int(train_split * ds_size)
+    val_size = int(val_split * ds_size)
+    train_data = ds.take(train_size)
+    val_data = ds.skip(train_size).take(val_size)
+    test_data = ds.skip(train_size).skip(val_size)
+    return train_data, val_data, test_data
+
+train_data, val_data, test_data = partition_data(dataset)
+
+# Data augmentation (only for training)
+# data_augmentation = tf.keras.Sequential([
+#     layers.RandomFlip("horizontal"),
+#     layers.RandomRotation(0.05),
+#     layers.RandomZoom(0.1),
+#     layers.RandomTranslation(0.1, 0.1),
+#     layers.RandomContrast(0.2),
+#     layers.GaussianNoise(0.01)
+# ])
+resize_and_rescale = tf.keras.Sequential([
+    layers.Resizing(IMAGE_SIZE, IMAGE_SIZE),
+    layers.Rescaling(1.0/255)
+])
+
+data_augmentation = tf.keras.Sequential([
+    layers.RandomFlip("horizontal_and_vertical"),
+    layers.RandomRotation(0.1),
+    layers.RandomZoom(0.1),
+    layers.RandomContrast(0.2),
+    layers.GaussianNoise(0.05)
+])
+
+
+# Prepare datasets
+def prepare(ds, augment=False):
+    if augment:
+        ds = ds.map(lambda x, y: (data_augmentation(x, training=True), y), num_parallel_calls=tf.data.AUTOTUNE)
+    return ds.cache().shuffle(1000).prefetch(buffer_size=tf.data.AUTOTUNE)
+
+train_data = prepare(train_data, augment=True)
+val_data = prepare(val_data)
+test_data = prepare(test_data)
+
+# Build CNN model
+def build_cnn(input_shape=(256, 256, 3), num_classes=3):
+    model = models.Sequential([
+        layers.Rescaling(1./255, input_shape=input_shape),
+
+        layers.Conv2D(32, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal'),
+        layers.MaxPooling2D(),
+
+        layers.Conv2D(64, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal'),
+        layers.MaxPooling2D(),
+
+        layers.Conv2D(64, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal'),
+        layers.MaxPooling2D(),
+
+        layers.Conv2D(64, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal'),
+        layers.MaxPooling2D(),
+
+        layers.Dropout(0.4),
+        layers.Flatten(),
+        layers.Dense(64, activation='relu'),
+        layers.Dropout(0.5),
+        layers.Dense(num_classes, activation='softmax')
+    ])
+    return model
+# def build_cnn(input_shape=(256, 256, 3), num_classes=3):
+#     n_classes = 3
+#     input_shape = (IMAGE_SIZE, IMAGE_SIZE, CHANNELS)
+#     model = models.Sequential([
+#         resize_and_rescale,
+#         layers.Conv2D(32, (3,3), activation='relu', input_shape = input_shape),
+#         layers.MaxPooling2D((2,2)),
+
+#         layers.Conv2D(64, kernel_size=(3,3), activation='relu'),
+#         layers.MaxPooling2D((2,2)),
+
+#         layers.Conv2D(64, kernel_size=(3,3), activation='relu'),
+#         layers.MaxPooling2D((2,2)),
+        
+#         layers.Conv2D(64, (3,3), activation='relu'),
+#         layers.MaxPooling2D((2,2)),
+        
+#         layers.Conv2D(64, (3,3), activation='relu'),
+#         layers.MaxPooling2D((2,2)),
+
+#         layers.Conv2D(64, (3,3), activation='relu'),
+#         layers.MaxPooling2D((2,2)),
+#         layers.Flatten(),
+#         layers.Dense(64, activation='relu'),
+#         layers.Dense(n_classes, activation='softmax')
+#     ])
+#     return model
+
+# Compile model
+model = build_cnn(INPUT_SHAPE, N_CLASSES)
+model.compile(optimizer='adam',
+              loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False),
+              metrics=['accuracy'])
+
+# Train model
+history = model.fit(
+    train_data,
+    validation_data=val_data,
+    epochs=EPOCHS,
+    # callbacks=[
+    #     tf.keras.callbacks.EarlyStopping(patience=5, restore_best_weights=True),
+    #     tf.keras.callbacks.ReduceLROnPlateau(patience=2, factor=0.2)
+    # ]
+)
+
+
