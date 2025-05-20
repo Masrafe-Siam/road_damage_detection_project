@@ -1,8 +1,8 @@
 .env
-Model/trained_model
-test_results
-Dataset_new
-Dataset_new_2
-Dataset_new_3
-Dataset_own_1
-Dataset_own_2
+Model/trained_model/
+test_results/
+Dataset_new/
+Dataset_new_2/
+Dataset_new_3/
+Dataset_own_1/
+Dataset_own_2/
